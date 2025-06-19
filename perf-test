@@ -1,0 +1,62 @@
+#!/usr/bin/bash
+RED='\e[31m'
+GREEN='\e[32m'
+BLUE='\e[34m'
+NC='\e[0m' # No Color (reset)
+
+start_spinner() {
+  local spin='-\|/'
+  local pid="$1"
+
+  local i=0
+  while kill -0 "$pid" 2>/dev/null
+  do
+    i=$(( (i+1) %4 ))
+    printf "\r${spin:$i:1}"
+    sleep .1
+  done
+  printf "\r"
+}
+
+echo "--- Performance Test Script ---"
+echo "Please ensure that the implementations are running correctly befure running the performance tests."
+
+BUILD_DIR=./build
+declare -a execs=("jogodavida" "jogodavidaomp" "jogodavida_mpi" "jogodavida_cuda")
+
+echo "Building implementations..."
+result=$(make all)
+if grep -qi "nothing to be done" <<< "$result"; then
+    echo -e "${GREEN}All scripts built${NC}" 1>&2
+else 
+  echo -e "${YELLOW}$result${NC}" 1>&2
+fi
+
+
+echo "======= Running performance tests...  ======="
+echo "============================================="
+
+# TODO: adicionar tabela de comparação de resultados
+temp_file=$(mktemp /tmp/perf_test.XXXXXX)
+for exec in "${execs[@]}"; do
+  if [[ ! -f "$BUILD_DIR/$exec" ]]; then
+    echo -e "${RED}Error: $exec not found in $BUILD_DIR${NC}" 1>&2
+    continue
+  fi
+
+  echo "--- Running $exec ---"
+  if [[ "$exec" == *"mpi"* ]]; then
+      # NOTE: especificar qtd de cores
+      command time -f "%e" mpirun -np 4 "$BUILD_DIR/$exec" > /dev/null 2>"$temp_file" &
+  else
+      command time -f "%e" "$BUILD_DIR/$exec" > /dev/null 2>"$temp_file" &
+  fi
+  pid=$!
+  start_spinner "$pid"
+  wait "$pid"
+    
+  runtime=$(cat "$temp_file")
+  echo -e "${BLUE}Execution time for $exec: ${runtime}s${NC}"
+done
+echo "============================================="
+rm "$temp_file"

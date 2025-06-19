@@ -1,3 +1,5 @@
+/* ---- ARQUIVO DE EXEMPLO PARA TESTE DE MAKEFILE ----
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
