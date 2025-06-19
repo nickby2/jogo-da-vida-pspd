@@ -1,10 +1,11 @@
 CC=gcc
+CFLAGS=-Wall -Wextra -pedantic
+
 NVCC=nvcc
 MPICC=mpicc
 
-CFLAGS=-Wall -Wextra -pedantic
-
 BUILD_DIR=build
+
 help:
 	@echo "Game of Life - Parallel Implementations"
 	@echo "=============================================="
@@ -22,6 +23,13 @@ help:
 	@echo "Utility targets:"
 	@echo "  clean               - Remove build directory and all binaries"
 	@echo "  help                - Show this help message"
+	@echo ""
+	@echo "Current variables:"
+	@echo " CC=$(CC)"
+	@echo " NVCC=$(NVCC)"
+	@echo " MPICC=$(MPICC)"
+	@echo " CFLAGS=$(CFLAGS)"
+	@echo " BUILD_DIR=$(BUILD_DIR)"
 
 all: jogodavida jogodavidaomp jogodavidaomp-gpu jogodavida_mpi jogodavida_cuda
 
