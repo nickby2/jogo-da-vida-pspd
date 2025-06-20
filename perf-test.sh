@@ -49,7 +49,7 @@ for exec in "${execs[@]}"; do
   echo "Running $exec:"
   if [[ "$exec" == *"mpi"* ]]; then
       # NOTE: especificar qtd de cores
-      command time -f "%e" mpirun -np 4 "$BUILD_DIR/$exec" > /dev/null 2>"$temp_file" &
+      command time -f "%e" mpirun -np $(nproc) "$BUILD_DIR/$exec" > /dev/null 2>"$temp_file" &
   else
       command time -f "%e" "$BUILD_DIR/$exec" > /dev/null 2>"$temp_file" &
   fi
