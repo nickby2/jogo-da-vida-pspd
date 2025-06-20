@@ -1,3 +1,6 @@
+/* ---- ARQUIVO DE EXEMPLO PARA TESTE DE MAKEFILE ----
+ */
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
@@ -18,14 +21,13 @@ double wall_time(void);
 void UmaVida(int *tabulIn, int *tabulOut, int tam) {
   int i, j, vizviv;
 
-#pragma omp parallel for private(i, j, vizviv) shared(tabulIn, tabulOut)
+#pragma omp parallel for collapse(2) private(vizviv)
   for (i = 1; i <= tam; i++) {
     for (j = 1; j <= tam; j++) {
       vizviv = tabulIn[ind2d(i - 1, j - 1)] + tabulIn[ind2d(i - 1, j)] +
                tabulIn[ind2d(i - 1, j + 1)] + tabulIn[ind2d(i, j - 1)] +
                tabulIn[ind2d(i, j + 1)] + tabulIn[ind2d(i + 1, j - 1)] +
                tabulIn[ind2d(i + 1, j)] + tabulIn[ind2d(i + 1, j + 1)];
-
       if (tabulIn[ind2d(i, j)] && vizviv < 2)
         tabulOut[ind2d(i, j)] = 0;
       else if (tabulIn[ind2d(i, j)] && vizviv > 3)
@@ -34,8 +36,8 @@ void UmaVida(int *tabulIn, int *tabulOut, int tam) {
         tabulOut[ind2d(i, j)] = 1;
       else
         tabulOut[ind2d(i, j)] = tabulIn[ind2d(i, j)];
-    }
-  }
+    } /* fim-for */
+  } /* fim-for */
 } /* fim-UmaVida */
 
 void DumpTabul(int *tabul, int tam, int first, int last, char *msg) {
@@ -75,7 +77,6 @@ int Correto(int *tabul, int tam) {
   int ij, cnt;
 
   cnt = 0;
-
   for (ij = 0; ij < (tam + 2) * (tam + 2); ij++)
     cnt = cnt + tabul[ij];
   return (cnt == 5 && tabul[ind2d(tam - 2, tam - 1)] &&
@@ -88,6 +89,8 @@ int main(void) {
   int i, tam, *tabulIn, *tabulOut;
   char msg[9];
   double t0, t1, t2, t3;
+
+  // para todos os tamanhos do tabuleiro
 
   for (pow = POWMIN; pow <= POWMAX; pow++) {
     tam = 1 << pow;
