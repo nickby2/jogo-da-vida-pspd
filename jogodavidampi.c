@@ -1,120 +1,126 @@
-/* ---- ARQUIVO DE EXEMPLO PARA TESTE DE MAKEFILE ----
- */
-#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/time.h>
-#define ind2d(i, j) (i) * (tam + 2) + j
-#define POWMIN 3
-#define POWMAX 10
+#include <mpi.h>
 
-double wall_time(void) {
-  struct timeval tv;
-  struct timezone tz;
+#define ind2d(i, j, tam) ((i) * (tam + 2) + (j))
 
-  gettimeofday(&tv, &tz);
-  return (tv.tv_sec + tv.tv_usec / 1000000.0);
-} /* fim-wall_time */
+void InicializaTabuleiro(int* tabul, int tam) {
+    for (int i = 0; i < (tam + 2) * (tam + 2); i++) {
+        tabul[i] = rand() % 2;
+    }
+}
 
-double wall_time(void);
+void UmaVidaSerial(int* in, int* out, int tam, int start, int end) {
+    for (int i = start; i <= end; i++) {
+        for (int j = 1; j <= tam; j++) {
+            int vizviv = in[ind2d(i-1, j-1, tam)] + in[ind2d(i-1, j  , tam)] +
+                         in[ind2d(i-1, j+1, tam)] + in[ind2d(i  , j-1, tam)] +
+                         in[ind2d(i  , j+1, tam)] + in[ind2d(i+1, j-1, tam)] +
+                         in[ind2d(i+1, j  , tam)] + in[ind2d(i+1, j+1, tam)];
 
-void UmaVida(int *tabulIn, int *tabulOut, int tam) {
-  int i, j, vizviv;
+            if (in[ind2d(i, j, tam)] && vizviv < 2)
+                out[ind2d(i, j, tam)] = 0;
+            else if (in[ind2d(i, j, tam)] && vizviv > 3)
+                out[ind2d(i, j, tam)] = 0;
+            else if (!in[ind2d(i, j, tam)] && vizviv == 3)
+                out[ind2d(i, j, tam)] = 1;
+            else
+                out[ind2d(i, j, tam)] = in[ind2d(i, j, tam)];
+        }
+    }
+}
 
-  for (i = 1; i <= tam; i++) {
-    for (j = 1; j <= tam; j++) {
-      vizviv = tabulIn[ind2d(i - 1, j - 1)] + tabulIn[ind2d(i - 1, j)] +
-               tabulIn[ind2d(i - 1, j + 1)] + tabulIn[ind2d(i, j - 1)] +
-               tabulIn[ind2d(i, j + 1)] + tabulIn[ind2d(i + 1, j - 1)] +
-               tabulIn[ind2d(i + 1, j)] + tabulIn[ind2d(i + 1, j + 1)];
-      if (tabulIn[ind2d(i, j)] && vizviv < 2)
-        tabulOut[ind2d(i, j)] = 0;
-      else if (tabulIn[ind2d(i, j)] && vizviv > 3)
-        tabulOut[ind2d(i, j)] = 0;
-      else if (!tabulIn[ind2d(i, j)] && vizviv == 3)
-        tabulOut[ind2d(i, j)] = 1;
-      else
-        tabulOut[ind2d(i, j)] = tabulIn[ind2d(i, j)];
-    } /* fim-for */
-  } /* fim-for */
-} /* fim-UmaVida */
+void ExportaGeracao(FILE* f, int* tab, int tam, int gen) {
+    fprintf(f, "Geração %d:\n", gen);
+    for (int i = 1; i <= tam; i++) {
+        for (int j = 1; j <= tam; j++) {
+            fprintf(f, "%d ", tab[ind2d(i, j, tam)]);
+        }
+        fprintf(f, "\n");
+    }
+    fprintf(f, "\n");
+}
 
-void DumpTabul(int *tabul, int tam, int first, int last, char *msg) {
-  int i, ij;
+int main(int argc, char** argv) {
+    int tam = 32;
+    int maxGen = 100;
 
-  printf("%s; Dump posicoes [%d:%d, %d:%d] de tabuleiro %d x %d\n", msg, first,
-         last, first, last, tam, tam);
-  for (i = first; i <= last; i++)
-    printf("=");
-  printf("=\n");
-  for (i = ind2d(first, 0); i <= ind2d(last, 0); i += ind2d(1, 0)) {
-    for (ij = i + first; ij <= i + last; ij++)
-      printf("%c", tabul[ij] ? 'X' : '.');
-    printf("\n");
-  }
-  for (i = first; i <= last; i++)
-    printf("=");
-  printf("=\n");
-} /* fim-DumpTabul */
+    int rank, size;
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-void InitTabul(int *tabulIn, int *tabulOut, int tam) {
-  int ij;
+    size_t totalSize = (tam + 2) * (tam + 2);
+    int* globalTab = NULL;
+    int* newGlobalTab = NULL;
+    FILE* f = NULL;
 
-  for (ij = 0; ij < (tam + 2) * (tam + 2); ij++) {
-    tabulIn[ij] = 0;
-    tabulOut[ij] = 0;
-  } /* fim-for */
+    if (rank == 0) {
+        globalTab = (int*)malloc(totalSize * sizeof(int));
+        newGlobalTab = (int*)malloc(totalSize * sizeof(int));
+        InicializaTabuleiro(globalTab, tam);
+        f = fopen("saida_mpi.txt", "w");
+    }
 
-  tabulIn[ind2d(1, 2)] = 1;
-  tabulIn[ind2d(2, 3)] = 1;
-  tabulIn[ind2d(3, 1)] = 1;
-  tabulIn[ind2d(3, 2)] = 1;
-  tabulIn[ind2d(3, 3)] = 1;
-} /* fim-InitTabul */
+    int rowsPerProc = tam / size;
+    int remainder = tam % size;
+    int localRows = rowsPerProc + (rank < remainder ? 1 : 0);
+    int startRow = rank * rowsPerProc + (rank < remainder ? rank : remainder) + 1;
+    int endRow = startRow + localRows - 1;
+    int localSize = (localRows + 2) * (tam + 2);
+    int* localIn = (int*)malloc(localSize * sizeof(int));
+    int* localOut = (int*)malloc(localSize * sizeof(int));
 
-int Correto(int *tabul, int tam) {
-  int ij, cnt;
+    double startTime = MPI_Wtime();
 
-  cnt = 0;
-  for (ij = 0; ij < (tam + 2) * (tam + 2); ij++)
-    cnt = cnt + tabul[ij];
-  return (cnt == 5 && tabul[ind2d(tam - 2, tam - 1)] &&
-          tabul[ind2d(tam - 1, tam)] && tabul[ind2d(tam, tam - 2)] &&
-          tabul[ind2d(tam, tam - 1)] && tabul[ind2d(tam, tam)]);
-} /* fim-Correto */
+    for (int gen = 1; gen <= maxGen; gen++) {
+        if (rank == 0) {
+            for (int p = 1; p < size; p++) {
+                int pStartRow = p * rowsPerProc + (p < remainder ? p : remainder) + 1;
+                int pLocalRows = rowsPerProc + (p < remainder ? 1 : 0);
+                MPI_Send(&globalTab[ind2d(pStartRow - 1, 0, tam)], (pLocalRows + 2) * (tam + 2), MPI_INT, p, 0, MPI_COMM_WORLD);
+            }
+            for (int i = 0; i < (localRows + 2) * (tam + 2); i++) {
+                localIn[i] = globalTab[ind2d(startRow - 1, 0, tam) + i];
+            }
+        } else {
+            MPI_Recv(localIn, (localRows + 2) * (tam + 2), MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        }
 
-int main(void) {
-  int pow;
-  int i, tam, *tabulIn, *tabulOut;
-  char msg[9];
-  double t0, t1, t2, t3;
+        UmaVidaSerial(localIn, localOut, tam, 1, localRows);
 
-  // para todos os tamanhos do tabuleiro
+        if (rank == 0) {
+            for (int i = 1; i <= localRows; i++) {
+                for (int j = 0; j < tam + 2; j++) {
+                    newGlobalTab[ind2d(startRow + i - 1, j, tam)] = localOut[ind2d(i, j, tam)];
+                }
+            }
+            for (int p = 1; p < size; p++) {
+                int pStartRow = p * rowsPerProc + (p < remainder ? p : remainder) + 1;
+                int pLocalRows = rowsPerProc + (p < remainder ? 1 : 0);
+                MPI_Recv(&newGlobalTab[ind2d(pStartRow, 0, tam)], pLocalRows * (tam + 2), MPI_INT, p, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            }
+            int* temp = globalTab;
+            globalTab = newGlobalTab;
+            newGlobalTab = temp;
+            ExportaGeracao(f, globalTab, tam, gen);
+        } else {
+            MPI_Send(&localOut[ind2d(1, 0, tam)], localRows * (tam + 2), MPI_INT, 0, 1, MPI_COMM_WORLD);
+        }
+    }
 
-  for (pow = POWMIN; pow <= POWMAX; pow++) {
-    tam = 1 << pow;
-    // aloca e inicializa tabuleiros
-    t0 = wall_time();
-    tabulIn = (int *)malloc((tam + 2) * (tam + 2) * sizeof(int));
-    tabulOut = (int *)malloc((tam + 2) * (tam + 2) * sizeof(int));
-    InitTabul(tabulIn, tabulOut, tam);
-    t1 = wall_time();
-    for (i = 0; i < 2 * (tam - 3); i++) {
-      UmaVida(tabulIn, tabulOut, tam);
-      UmaVida(tabulOut, tabulIn, tam);
-    } /* fim-for */
-    t2 = wall_time();
+    double endTime = MPI_Wtime();
 
-    if (Correto(tabulIn, tam))
-      printf("**RESULTADO CORRETO**\n");
-    else
-      printf("**RESULTADO ERRADO**\n");
+    if (rank == 0) {
+        fclose(f);
+        printf("Simulação MPI completa!\n");
+        printf("Tempo de execução: %f segundos\n", endTime - startTime);
+        free(globalTab);
+        free(newGlobalTab);
+    }
 
-    t3 = wall_time();
-    printf("tam=%d; tempos: init=%7.7f, comp=%7.7f, fim=%7.7f, tot=%7.7f \n",
-           tam, t1 - t0, t2 - t1, t3 - t2, t3 - t0);
-    free(tabulIn);
-    free(tabulOut);
-  }
-  return 0;
-} /* fim-main */
+    free(localIn);
+    free(localOut);
+    MPI_Finalize();
+    return 0;
+}

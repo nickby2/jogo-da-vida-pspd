@@ -1,120 +1,104 @@
-/* ---- ARQUIVO DE EXEMPLO PARA TESTE DE MAKEFILE ----
- */
-#include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/time.h>
-#define ind2d(i, j) (i) * (tam + 2) + j
-#define POWMIN 3
-#define POWMAX 10
+#include <cuda.h>
 
-double wall_time(void) {
-  struct timeval tv;
-  struct timezone tz;
+#define ind2d(i, j, tam) ((i) * (tam + 2) + (j))
 
-  gettimeofday(&tv, &tz);
-  return (tv.tv_sec + tv.tv_usec / 1000000.0);
-} /* fim-wall_time */
+__global__ void UmaVidaKernel(int* tabulIn, int* tabulOut, int tam) {
+    int i = blockIdx.y * blockDim.y + threadIdx.y + 1;
+    int j = blockIdx.x * blockDim.x + threadIdx.x + 1;
 
-double wall_time(void);
+    if (i <= tam && j <= tam) {
+        int vizviv = tabulIn[ind2d(i-1, j-1, tam)] + tabulIn[ind2d(i-1, j  , tam)] +
+                     tabulIn[ind2d(i-1, j+1, tam)] + tabulIn[ind2d(i  , j-1, tam)] +
+                     tabulIn[ind2d(i  , j+1, tam)] + tabulIn[ind2d(i+1, j-1, tam)] +
+                     tabulIn[ind2d(i+1, j  , tam)] + tabulIn[ind2d(i+1, j+1, tam)];
 
-void UmaVida(int *tabulIn, int *tabulOut, int tam) {
-  int i, j, vizviv;
+        if (tabulIn[ind2d(i, j, tam)] && vizviv < 2)
+            tabulOut[ind2d(i, j, tam)] = 0;
+        else if (tabulIn[ind2d(i, j, tam)] && vizviv > 3)
+            tabulOut[ind2d(i, j, tam)] = 0;
+        else if (!tabulIn[ind2d(i, j, tam)] && vizviv == 3)
+            tabulOut[ind2d(i, j, tam)] = 1;
+        else
+            tabulOut[ind2d(i, j, tam)] = tabulIn[ind2d(i, j, tam)];
+    }
+}
 
-  for (i = 1; i <= tam; i++) {
-    for (j = 1; j <= tam; j++) {
-      vizviv = tabulIn[ind2d(i - 1, j - 1)] + tabulIn[ind2d(i - 1, j)] +
-               tabulIn[ind2d(i - 1, j + 1)] + tabulIn[ind2d(i, j - 1)] +
-               tabulIn[ind2d(i, j + 1)] + tabulIn[ind2d(i + 1, j - 1)] +
-               tabulIn[ind2d(i + 1, j)] + tabulIn[ind2d(i + 1, j + 1)];
-      if (tabulIn[ind2d(i, j)] && vizviv < 2)
-        tabulOut[ind2d(i, j)] = 0;
-      else if (tabulIn[ind2d(i, j)] && vizviv > 3)
-        tabulOut[ind2d(i, j)] = 0;
-      else if (!tabulIn[ind2d(i, j)] && vizviv == 3)
-        tabulOut[ind2d(i, j)] = 1;
-      else
-        tabulOut[ind2d(i, j)] = tabulIn[ind2d(i, j)];
-    } /* fim-for */
-  } /* fim-for */
-} /* fim-UmaVida */
+void UmaVida(int* d_in, int* d_out, int tam) {
+    dim3 threadsPerBlock(16, 16);
+    dim3 numBlocks((tam + 15) / 16, (tam + 15) / 16);
+    UmaVidaKernel<<<numBlocks, threadsPerBlock>>>(d_in, d_out, tam);
+    cudaDeviceSynchronize();
+}
 
-void DumpTabul(int *tabul, int tam, int first, int last, char *msg) {
-  int i, ij;
+void InicializaTabuleiro(int* tabul, int tam) {
+    for (int i = 0; i < (tam + 2) * (tam + 2); i++) {
+        tabul[i] = rand() % 2;
+    }
+}
 
-  printf("%s; Dump posicoes [%d:%d, %d:%d] de tabuleiro %d x %d\n", msg, first,
-         last, first, last, tam, tam);
-  for (i = first; i <= last; i++)
-    printf("=");
-  printf("=\n");
-  for (i = ind2d(first, 0); i <= ind2d(last, 0); i += ind2d(1, 0)) {
-    for (ij = i + first; ij <= i + last; ij++)
-      printf("%c", tabul[ij] ? 'X' : '.');
-    printf("\n");
-  }
-  for (i = first; i <= last; i++)
-    printf("=");
-  printf("=\n");
-} /* fim-DumpTabul */
+int main() {
+    int tam = 32;
+    int maxGen = 100;
 
-void InitTabul(int *tabulIn, int *tabulOut, int tam) {
-  int ij;
+    size_t size = (tam + 2) * (tam + 2) * sizeof(int);
 
-  for (ij = 0; ij < (tam + 2) * (tam + 2); ij++) {
-    tabulIn[ij] = 0;
-    tabulOut[ij] = 0;
-  } /* fim-for */
+    int* h_tabul1 = (int*)malloc(size);
+    int* h_tabul2 = (int*)malloc(size);
 
-  tabulIn[ind2d(1, 2)] = 1;
-  tabulIn[ind2d(2, 3)] = 1;
-  tabulIn[ind2d(3, 1)] = 1;
-  tabulIn[ind2d(3, 2)] = 1;
-  tabulIn[ind2d(3, 3)] = 1;
-} /* fim-InitTabul */
+    InicializaTabuleiro(h_tabul1, tam);
 
-int Correto(int *tabul, int tam) {
-  int ij, cnt;
+    int* d_tabul1;
+    int* d_tabul2;
 
-  cnt = 0;
-  for (ij = 0; ij < (tam + 2) * (tam + 2); ij++)
-    cnt = cnt + tabul[ij];
-  return (cnt == 5 && tabul[ind2d(tam - 2, tam - 1)] &&
-          tabul[ind2d(tam - 1, tam)] && tabul[ind2d(tam, tam - 2)] &&
-          tabul[ind2d(tam, tam - 1)] && tabul[ind2d(tam, tam)]);
-} /* fim-Correto */
+    cudaMalloc((void**)&d_tabul1, size);
+    cudaMalloc((void**)&d_tabul2, size);
 
-int main(void) {
-  int pow;
-  int i, tam, *tabulIn, *tabulOut;
-  char msg[9];
-  double t0, t1, t2, t3;
+    cudaMemcpy(d_tabul1, h_tabul1, size, cudaMemcpyHostToDevice);
 
-  // para todos os tamanhos do tabuleiro
+    FILE* arquivo = fopen("geracoes.txt", "w");
 
-  for (pow = POWMIN; pow <= POWMAX; pow++) {
-    tam = 1 << pow;
-    // aloca e inicializa tabuleiros
-    t0 = wall_time();
-    tabulIn = (int *)malloc((tam + 2) * (tam + 2) * sizeof(int));
-    tabulOut = (int *)malloc((tam + 2) * (tam + 2) * sizeof(int));
-    InitTabul(tabulIn, tabulOut, tam);
-    t1 = wall_time();
-    for (i = 0; i < 2 * (tam - 3); i++) {
-      UmaVida(tabulIn, tabulOut, tam);
-      UmaVida(tabulOut, tabulIn, tam);
-    } /* fim-for */
-    t2 = wall_time();
+    cudaEvent_t start, stop;
+    float milliseconds = 0;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
 
-    if (Correto(tabulIn, tam))
-      printf("**RESULTADO CORRETO**\n");
-    else
-      printf("**RESULTADO ERRADO**\n");
+    cudaEventRecord(start);
 
-    t3 = wall_time();
-    printf("tam=%d; tempos: init=%7.7f, comp=%7.7f, fim=%7.7f, tot=%7.7f \n",
-           tam, t1 - t0, t2 - t1, t3 - t2, t3 - t0);
-    free(tabulIn);
-    free(tabulOut);
-  }
-  return 0;
-} /* fim-main */
+    for (int gen = 0; gen < maxGen; gen++) {
+        UmaVida(d_tabul1, d_tabul2, tam);
+
+        cudaMemcpy(h_tabul1, d_tabul1, size, cudaMemcpyDeviceToHost);
+
+        fprintf(arquivo, "Geração %d:\n", gen + 1);
+        for (int i = 1; i <= tam; i++) {
+            for (int j = 1; j <= tam; j++) {
+                fprintf(arquivo, "%d ", h_tabul1[ind2d(i, j, tam)]);
+            }
+            fprintf(arquivo, "\n");
+        }
+        fprintf(arquivo, "\n");
+
+        int* temp = d_tabul1;
+        d_tabul1 = d_tabul2;
+        d_tabul2 = temp;
+    }
+
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&milliseconds, start, stop);
+
+    cudaMemcpy(h_tabul1, d_tabul1, size, cudaMemcpyDeviceToHost);
+
+    printf("Simulação completa!\n");
+    printf("Tempo de execução na GPU: %.4f ms\n", milliseconds);
+
+    fclose(arquivo);
+    cudaFree(d_tabul1);
+    cudaFree(d_tabul2);
+    free(h_tabul1);
+    free(h_tabul2);
+
+    return 0;
+}
