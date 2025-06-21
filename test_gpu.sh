@@ -9,8 +9,7 @@ echo
 # Verifica se o executável existe
 if [ ! -f "jogodavidaomp-gpu" ]; then
     echo "Compilando o programa..."
-    make clean
-    make
+    make jogodavidaomp-gpu
 fi
 
 # Verifica se a compilação foi bem-sucedida
