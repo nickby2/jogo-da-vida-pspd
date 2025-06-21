@@ -1,5 +1,3 @@
-/* ---- ARQUIVO DE EXEMPLO PARA TESTE DE MAKEFILE ----
- */
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,13 +19,15 @@ double wall_time(void);
 void UmaVida(int *tabulIn, int *tabulOut, int tam) {
   int i, j, vizviv;
 
-#pragma omp parallel for collapse(2) private(vizviv)
+  // Versão GPU usando OpenMP target
+#pragma omp target teams distribute parallel for collapse(2) private(vizviv) \
+    map(to:tabulIn[0:(tam+2)*(tam+2)]) map(tofrom:tabulOut[0:(tam+2)*(tam+2)])
   for (i = 1; i <= tam; i++) {
     for (j = 1; j <= tam; j++) {
-      vizviv = tabulIn[ind2d(i - 1, j - 1)] + tabulIn[ind2d(i - 1, j)] +
-               tabulIn[ind2d(i - 1, j + 1)] + tabulIn[ind2d(i, j - 1)] +
-               tabulIn[ind2d(i, j + 1)] + tabulIn[ind2d(i + 1, j - 1)] +
-               tabulIn[ind2d(i + 1, j)] + tabulIn[ind2d(i + 1, j + 1)];
+      vizviv =tabulIn[ind2d(i - 1, j - 1)] + tabulIn[ind2d(i - 1, j)] +
+              tabulIn[ind2d(i - 1, j + 1)] + tabulIn[ind2d(i, j - 1)] +
+              tabulIn[ind2d(i, j + 1)] + tabulIn[ind2d(i + 1, j - 1)] +
+              tabulIn[ind2d(i + 1, j)] + tabulIn[ind2d(i + 1, j + 1)];
       if (tabulIn[ind2d(i, j)] && vizviv < 2)
         tabulOut[ind2d(i, j)] = 0;
       else if (tabulIn[ind2d(i, j)] && vizviv > 3)
@@ -39,6 +39,34 @@ void UmaVida(int *tabulIn, int *tabulOut, int tam) {
     } /* fim-for */
   } /* fim-for */
 } /* fim-UmaVida */
+
+// Versão alternativa com target data para melhor gerenciamento de memória
+void UmaVidaOptimized(int *tabulIn, int *tabulOut, int tam) {
+  int i, j, vizviv;
+  int size = (tam + 2) * (tam + 2);
+
+  // Aloca memória na GPU e transfere dados
+#pragma omp target data map(to:tabulIn[0:size]) map(tofrom:tabulOut[0:size])
+  {
+#pragma omp target teams distribute parallel for collapse(2) private(vizviv)
+    for (i = 1; i <= tam; i++) {
+      for (j = 1; j <= tam; j++) {
+        vizviv = tabulIn[ind2d(i - 1, j - 1)] + tabulIn[ind2d(i - 1, j)] +
+                 tabulIn[ind2d(i - 1, j + 1)] + tabulIn[ind2d(i, j - 1)] +
+                 tabulIn[ind2d(i, j + 1)] + tabulIn[ind2d(i + 1, j - 1)] +
+                 tabulIn[ind2d(i + 1, j)] + tabulIn[ind2d(i + 1, j + 1)];
+        if (tabulIn[ind2d(i, j)] && vizviv < 2)
+          tabulOut[ind2d(i, j)] = 0;
+        else if (tabulIn[ind2d(i, j)] && vizviv > 3)
+          tabulOut[ind2d(i, j)] = 0;
+        else if (!tabulIn[ind2d(i, j)] && vizviv == 3)
+          tabulOut[ind2d(i, j)] = 1;
+        else
+          tabulOut[ind2d(i, j)] = tabulIn[ind2d(i, j)];
+      } 
+    } 
+  } 
+} 
 
 void DumpTabul(int *tabul, int tam, int first, int last, char *msg) {
   int i, ij;
@@ -56,7 +84,7 @@ void DumpTabul(int *tabul, int tam, int first, int last, char *msg) {
   for (i = first; i <= last; i++)
     printf("=");
   printf("=\n");
-} /* fim-DumpTabul */
+} 
 
 void InitTabul(int *tabulIn, int *tabulOut, int tam) {
   int ij;
@@ -64,14 +92,14 @@ void InitTabul(int *tabulIn, int *tabulOut, int tam) {
   for (ij = 0; ij < (tam + 2) * (tam + 2); ij++) {
     tabulIn[ij] = 0;
     tabulOut[ij] = 0;
-  } /* fim-for */
+  }
 
   tabulIn[ind2d(1, 2)] = 1;
   tabulIn[ind2d(2, 3)] = 1;
   tabulIn[ind2d(3, 1)] = 1;
   tabulIn[ind2d(3, 2)] = 1;
   tabulIn[ind2d(3, 3)] = 1;
-} /* fim-InitTabul */
+}
 
 int Correto(int *tabul, int tam) {
   int ij, cnt;
@@ -82,16 +110,26 @@ int Correto(int *tabul, int tam) {
   return (cnt == 5 && tabul[ind2d(tam - 2, tam - 1)] &&
           tabul[ind2d(tam - 1, tam)] && tabul[ind2d(tam, tam - 2)] &&
           tabul[ind2d(tam, tam - 1)] && tabul[ind2d(tam, tam)]);
-} /* fim-Correto */
+}
 
 int main(void) {
   int pow;
   int i, tam, *tabulIn, *tabulOut;
-  char msg[9];
   double t0, t1, t2, t3;
+  int use_optimized = 1; 
+
+  // Verifica se GPU está disponível
+  int num_devices = omp_get_num_devices();
+  printf("Número de dispositivos OpenMP disponíveis: %d\n", num_devices);
+  
+  if (num_devices > 0) {
+    printf("GPU disponível - usando versão otimizada\n");
+  } else {
+    printf("GPU não disponível - usando versão CPU\n");
+    use_optimized = 0;
+  }
 
   // para todos os tamanhos do tabuleiro
-
   for (pow = POWMIN; pow <= POWMAX; pow++) {
     tam = 1 << pow;
     // aloca e inicializa tabuleiros
@@ -100,10 +138,17 @@ int main(void) {
     tabulOut = (int *)malloc((tam + 2) * (tam + 2) * sizeof(int));
     InitTabul(tabulIn, tabulOut, tam);
     t1 = wall_time();
+    
+    // Executa o jogo da vida
     for (i = 0; i < 2 * (tam - 3); i++) {
-      UmaVida(tabulIn, tabulOut, tam);
-      UmaVida(tabulOut, tabulIn, tam);
-    } /* fim-for */
+      if (use_optimized) {
+        UmaVidaOptimized(tabulIn, tabulOut, tam);
+        UmaVidaOptimized(tabulOut, tabulIn, tam);
+      } else {
+        UmaVida(tabulIn, tabulOut, tam);
+        UmaVida(tabulOut, tabulIn, tam);
+      }
+    }
     t2 = wall_time();
 
     if (Correto(tabulIn, tam))
@@ -118,4 +163,4 @@ int main(void) {
     free(tabulOut);
   }
   return 0;
-} /* fim-main */
+}
