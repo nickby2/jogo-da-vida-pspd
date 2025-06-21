@@ -6,15 +6,17 @@ YELLOW='\e[33m'
 NC='\e[0m' # No Color (reset)
 
 NUM_RUNS=1
-LONGOPTS=help,num-runs:,version
-OPTIONS=n:hv
+LONGOPTS=help,num-runs:,version,degree:
+OPTIONS=n:hvd:
+DEGREE=$(nproc)
 
 help() {
   echo "Usage: $0 [options]"
   echo "Options:"
-  echo "  -n, --num-runs <number>  Number of runs for each implementation (default: 1)"
-  echo "  -h, --help    Show this help message"
-  echo "  -v, --version Show script version"
+  echo "  -n, --num-runs  <number>  Number of runs for each implementation (default: 1)"
+  echo "  -d, --degree    <number> Degree of parallelism (default: number of CPU cores)"
+  echo "  -h, --help      Show this help message"
+  echo "  -v, --version   Show script version"
 }
 
 start_spinner() {
@@ -53,6 +55,16 @@ while true; do
       ;;
     -n|--num-runs)
       NUM_RUNS="$2"
+      shift 2
+      ;;
+    -d|--degree)
+      DEGREE="$2"
+      if ! [[ "$DEGREE" =~ ^[0-9]+$ ]]; then
+        echo -e "${RED}Error: Degree must be a positive integer${NC}" >&2
+        exit 1
+      fi
+      echo "Setting degree of parallelism to $DEGREE"
+      export OMP_NUM_THREADS="$DEGREE"
       shift 2
       ;;
     --) 
@@ -97,7 +109,7 @@ for exec in "${execs[@]}"; do
   for ((i=0; i<NUM_RUNS; i++)); do
     echo -e "${YELLOW}Run $((i+1)) of $NUM_RUNS for $exec...${NC}"
     if [[ "$exec" == *"mpi"* ]]; then
-        command time -f "%e" mpirun -np "$(nproc)" "$BUILD_DIR/$exec" > /dev/null 2>>"$temp_avg_file" &
+        command time -f "%e" mpirun -np "$DEGREE" "$BUILD_DIR/$exec" > /dev/null 2>>"$temp_avg_file" &
     else
         command time -f "%e" "$BUILD_DIR/$exec" > /dev/null 2>>"$temp_avg_file" &
     fi
