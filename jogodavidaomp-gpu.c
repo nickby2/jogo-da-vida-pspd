@@ -8,7 +8,8 @@
 #define POWMIN 3
 #define POWMAX 10
 
-double wall_time(void) {
+double wall_time(void)
+{
   struct timeval tv;
   struct timezone tz;
 
@@ -18,12 +19,15 @@ double wall_time(void) {
 
 double wall_time(void);
 
-void UmaVida(int *tabulIn, int *tabulOut, int tam) {
+void UmaVida(int *tabulIn, int *tabulOut, int tam)
+{
   int i, j, vizviv;
 
-#pragma omp parallel for collapse(2) private(vizviv)
-  for (i = 1; i <= tam; i++) {
-    for (j = 1; j <= tam; j++) {
+#pragma omp target teams distribute parallel for collapse(2) map(to : tabulIn[0 : (tam + 2) * (tam + 2)]) map(from : tabulOut[0 : (tam + 2) * (tam + 2)]) private(i, j, vizviv)
+  for (i = 1; i <= tam; i++)
+  {
+    for (j = 1; j <= tam; j++)
+    {
       vizviv = tabulIn[ind2d(i - 1, j - 1)] + tabulIn[ind2d(i - 1, j)] +
                tabulIn[ind2d(i - 1, j + 1)] + tabulIn[ind2d(i, j - 1)] +
                tabulIn[ind2d(i, j + 1)] + tabulIn[ind2d(i + 1, j - 1)] +
@@ -40,7 +44,8 @@ void UmaVida(int *tabulIn, int *tabulOut, int tam) {
   } /* fim-for */
 } /* fim-UmaVida */
 
-void DumpTabul(int *tabul, int tam, int first, int last, char *msg) {
+void DumpTabul(int *tabul, int tam, int first, int last, char *msg)
+{
   int i, ij;
 
   printf("%s; Dump posicoes [%d:%d, %d:%d] de tabuleiro %d x %d\n", msg, first,
@@ -48,7 +53,8 @@ void DumpTabul(int *tabul, int tam, int first, int last, char *msg) {
   for (i = first; i <= last; i++)
     printf("=");
   printf("=\n");
-  for (i = ind2d(first, 0); i <= ind2d(last, 0); i += ind2d(1, 0)) {
+  for (i = ind2d(first, 0); i <= ind2d(last, 0); i += ind2d(1, 0))
+  {
     for (ij = i + first; ij <= i + last; ij++)
       printf("%c", tabul[ij] ? 'X' : '.');
     printf("\n");
@@ -58,10 +64,12 @@ void DumpTabul(int *tabul, int tam, int first, int last, char *msg) {
   printf("=\n");
 } /* fim-DumpTabul */
 
-void InitTabul(int *tabulIn, int *tabulOut, int tam) {
+void InitTabul(int *tabulIn, int *tabulOut, int tam)
+{
   int ij;
 
-  for (ij = 0; ij < (tam + 2) * (tam + 2); ij++) {
+  for (ij = 0; ij < (tam + 2) * (tam + 2); ij++)
+  {
     tabulIn[ij] = 0;
     tabulOut[ij] = 0;
   } /* fim-for */
@@ -73,18 +81,21 @@ void InitTabul(int *tabulIn, int *tabulOut, int tam) {
   tabulIn[ind2d(3, 3)] = 1;
 } /* fim-InitTabul */
 
-int Correto(int *tabul, int tam) {
+int Correto(int *tabul, int tam)
+{
   int ij, cnt;
-
   cnt = 0;
+
   for (ij = 0; ij < (tam + 2) * (tam + 2); ij++)
     cnt = cnt + tabul[ij];
+
   return (cnt == 5 && tabul[ind2d(tam - 2, tam - 1)] &&
           tabul[ind2d(tam - 1, tam)] && tabul[ind2d(tam, tam - 2)] &&
           tabul[ind2d(tam, tam - 1)] && tabul[ind2d(tam, tam)]);
 } /* fim-Correto */
 
-int main(void) {
+int main(void)
+{
   int pow;
   int i, tam, *tabulIn, *tabulOut;
   char msg[9];
@@ -92,7 +103,8 @@ int main(void) {
 
   // para todos os tamanhos do tabuleiro
 
-  for (pow = POWMIN; pow <= POWMAX; pow++) {
+  for (pow = POWMIN; pow <= POWMAX; pow++)
+  {
     tam = 1 << pow;
     // aloca e inicializa tabuleiros
     t0 = wall_time();
@@ -100,7 +112,8 @@ int main(void) {
     tabulOut = (int *)malloc((tam + 2) * (tam + 2) * sizeof(int));
     InitTabul(tabulIn, tabulOut, tam);
     t1 = wall_time();
-    for (i = 0; i < 2 * (tam - 3); i++) {
+    for (i = 0; i < 2 * (tam - 3); i++)
+    {
       UmaVida(tabulIn, tabulOut, tam);
       UmaVida(tabulOut, tabulIn, tam);
     } /* fim-for */
