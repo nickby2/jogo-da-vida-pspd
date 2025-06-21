@@ -39,7 +39,7 @@ PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@") 
 eval set -- "$PARSED"
 
 BUILD_DIR=./build
-declare -a execs=("jogodavida" "jogodavidaomp")
+declare -a execs=("jogodavida" "jogodavidaomp" "jogodavidaomp-gpu" "jogodavida_mpi" "jogodavida_cuda")
 
 while true; do
   case "$1" in
